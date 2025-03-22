@@ -3,6 +3,7 @@ import {KeyboardAvoidingView, StyleSheet, Text, TextInput, TouchableOpacity, Vie
 import {auth} from "./firebase";
 import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
+import { Alert } from 'react-native';
 
 
 import { 
@@ -43,7 +44,7 @@ const LoginScreen: FunctionComponent = () => {
             const user = userCreds.user;
             console.log('Registered with: ', user?.email);
           })
-          .catch(error => alert(error.message));
+          .catch(error => Alert.alert(error.message))
       }
 
       const handleLogin = () => {
@@ -52,7 +53,7 @@ const LoginScreen: FunctionComponent = () => {
             const user = userCreds.user;
             console.log('LoggedIn with: ', user?.email);
           })
-          .catch(error => alert(error.message));
+          .catch(error => Alert.alert(error.message));
       };    
 
 
@@ -152,6 +153,3 @@ const styles = StyleSheet.create({
 
 export default LoginScreen;
 
-function alert(message: any): any {
-    throw new Error("Function not implemented.");
-}
