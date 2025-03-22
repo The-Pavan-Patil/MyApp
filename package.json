@@ -10,6 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@react-native-firebase/app": "^21.12.1",
     "react": "19.0.0",
     "react-native": "0.78.0",
     "react-native-chart-kit": "^6.12.0",
