@@ -11,7 +11,10 @@
   },
   "dependencies": {
     "react": "19.0.0",
-    "react-native": "0.78.0"
+    "react-native": "0.78.0",
+    "react-native-chart-kit": "^6.12.0",
+    "react-native-svg": "^15.11.2",
+    "sp-react-native-mqtt": "^0.5.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
