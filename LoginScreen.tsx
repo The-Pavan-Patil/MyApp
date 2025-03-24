@@ -1,116 +1,164 @@
 import {FunctionComponent, useEffect, useState} from "react";
-import {KeyboardAvoidingView, StyleSheet, Text, TextInput, TouchableOpacity, View} from "react-native";
+import {KeyboardAvoidingView, StyleSheet, Text, TextInput, TouchableOpacity, View, Alert} from "react-native";
 import {auth} from "./firebase";
 import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
-import { Alert } from 'react-native';
-
-
-import { 
-    createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
-    onAuthStateChanged 
-  } from "firebase/auth";
+import Lottie from 'lottie-react-native';
+import Icon from 'react-native-vector-icons/FontAwesome';
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import animationData from './assets/Animation.json';
+import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword,sendEmailVerification } from "firebase/auth";
 
-
-  type RootStackParamList = {
+type RootStackParamList = {
     Home: undefined;
     MQTTClient: undefined;
     LoginScreen: undefined
-  };
+};
 
-  type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'LoginScreen'>;
+type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'LoginScreen'>;
 
- 
 const LoginScreen: FunctionComponent = () => {
-
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [isSigningUp, setIsSigningUp] = useState(false); // Add this state
+    const [showPassword, setShowPassword] = useState(false);
     const navigation = useNavigation<LoginScreenNavigationProp>();
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
-          if (user) {
-            navigation.replace("MQTTClient");
-          }
+            if (user && !isSigningUp) {
+                navigation.replace("MQTTClient");
+            }
         });
         return unsubscribe;
-    }, [navigation]);
+    }, [navigation, isSigningUp]);
 
-    const handleSignUp = () => {
-        createUserWithEmailAndPassword(auth, email, password)
-          .then((userCreds) => {
-            const user = userCreds.user;
-            console.log('Registered with: ', user?.email);
-          })
-          .catch(error => Alert.alert(error.message))
-      }
+   const handleSignUp = async () => {
+  setIsSigningUp(true);
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    
+    // Send verification email
+    await sendEmailVerification(user);
+    
+    Alert.alert(
+      "Verify Your Email",
+      "A verification email has been sent. Please verify your email before logging in.",
+      [
+        {
+          text: "OK",
+          onPress: () => {
+            setEmail('');
+            setPassword('');
+            auth.signOut(); // Sign out until verification
+          }
+        }
+      ]
+    );
+  } catch (error: any) {
+    Alert.alert("Error", error.message);
+  } finally {
+    setIsSigningUp(false);
+  }
+};
 
-      const handleLogin = () => {
-        signInWithEmailAndPassword(auth, email, password)
-          .then((userCreds) => {
-            const user = userCreds.user;
-            console.log('LoggedIn with: ', user?.email);
-          })
-          .catch(error => Alert.alert(error.message));
-      };    
 
+    const handleLogin = async () => {
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+        } catch (error: any) {
+            Alert.alert("Error", error.message);
+        }
+    };   
 
     return (
         <SafeAreaProvider>
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={'padding'}
-        >
-            <View
-                style={styles.inputContainer}
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={'padding'}
             >
-                <TextInput
-                    placeholder={'Email'}
-                    style={styles.input}
-                    value={email}
-                    onChangeText={text => setEmail(text)}
-                ></TextInput>
-                <TextInput
-                    placeholder={'Password'}
-                    style={styles.input}
-                    value={password}
-                    onChangeText={pwd => setPassword(pwd)}
-                    secureTextEntry
-                ></TextInput>
-            </View>
+         <Text style={styles.header}>Vita-Link</Text>
+        <View style={styles.animationContainer}>
+        <Lottie
+          source={animationData}
+          autoPlay
+          loop
+          style={styles.animation}
+        />
+      </View>
 
-            <View style={styles.buttonContainer}>
-                <TouchableOpacity
-                    onPress={handleLogin}
-                    style={styles.button}
-                >
-                    <Text style={styles.buttonText}>Login</Text>
-                </TouchableOpacity>
+                <View style={styles.inputContainer}>
+                    <TextInput
+                        placeholder={'Email'}
+                        style={styles.input}
+                        value={email}
+                        onChangeText={setEmail}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                    />
+                    <View style={styles.passwordContainer}>
+                        <TextInput
+                            placeholder={'Password'}
+                            style={styles.input}
+                            value={password}
+                            onChangeText={setPassword}
+                            secureTextEntry={!showPassword}
+                        />
+                        <TouchableOpacity
+                            style={styles.eyeIcon}
+                            onPress={() => setShowPassword(!showPassword)}
+                        >
+                            <Icon
+                            name={showPassword ? 'eye' : 'eye-slash'}
+                            size={20}
+                            color="#666"
+                            />          
+                        </TouchableOpacity>
+                    </View>
+                </View>
 
-                <TouchableOpacity
-                    onPress={handleSignUp}
-                    style={[styles.button, styles.buttonOutline]}
-                >
-                    <Text style={styles.buttonOutlineText}>Register</Text>
-                </TouchableOpacity>
-            </View>
-        </KeyboardAvoidingView>
+                <View style={styles.buttonContainer}>
+                    <TouchableOpacity
+                        onPress={handleLogin}
+                        style={styles.button}
+                    >
+                        <Text style={styles.buttonText}>Login</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        onPress={handleSignUp}
+                        style={[styles.button, styles.buttonOutline]}
+                    >
+                        <Text style={styles.buttonOutlineText}>Register</Text>
+                    </TouchableOpacity>
+                </View>
+            </KeyboardAvoidingView>
         </SafeAreaProvider>
-        );
+    );
 }
-
-
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
+        paddingTop: 20, // Add some top padding
     },
     inputContainer: {
         width: '80%',
+    },
+    header: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: '#2c3e50',
+        letterSpacing: 0.8,
+      },
+    headerContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
     },
     input: {
         backgroundColor: 'white',
@@ -118,6 +166,15 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         borderRadius: 10,
         marginTop: 5,
+    },
+    passwordContainer: {
+        position: 'relative',
+        marginTop: 10,
+    },
+    eyeIcon: {
+        position: 'absolute',
+        right: 15,
+        top: 12,
     },
     buttonContainer: {
         width: '60%',
@@ -147,9 +204,17 @@ const styles = StyleSheet.create({
         color: 'white',
         fontWeight: '700',
         fontSize: 16,
-    }
+    },
+    animationContainer: {
+        height: 200,
+        width: '100%',
+        marginBottom: 20,
+      },
+      animation: {
+        flex: 1,
+      },
+      // Adjust container to add spacing
+      
 });
 
-
 export default LoginScreen;
-

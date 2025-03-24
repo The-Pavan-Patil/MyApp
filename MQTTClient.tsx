@@ -1,7 +1,25 @@
-import React, { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from "react-native";
+import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Alert } from "react-native";
 import MQTT from "sp-react-native-mqtt";
 import { LineChart } from "react-native-chart-kit";
+import { auth } from "./firebase";
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from './App';
+
+
+
+type MQTTClientProps = {
+    navigation: StackNavigationProp<RootStackParamList, 'MQTTClient'>;
+  };
+
+
+
+  type ModeDisplayNames = {
+    ecg: string;
+    temp: string;
+    health: string;
+    emg: string;
+  };
 
 const MQTT_BROKER_URL = "wss://89db5cc86dc341a691af602183793358.s1.eu.hivemq.cloud:8883";
 const COMMAND_TOPIC = "sensor/command";
@@ -12,8 +30,9 @@ const MAX_DATA_POINTS = 50;
 const modeInformation = {
   ecg: {
     title: "ECG Monitoring",
-    description: "Electrocardiogram (ECG) measures the electrical activity of the heart. Note: if you found any abnormility in the ECG signal please consult the doctor",
+    description: "Electrocardiogram (ECG) measures the electrical activity of the heart. ",
     parameters: [
+      "Note: if you found any abnormility in the ECG signal please consult the doctor",  
       "Normal HR: 60-100 BPM",
       "P-wave: <120ms",
       "QRS Complex: <110ms",
@@ -52,7 +71,20 @@ const modeInformation = {
 
 
 
-const MQTTClient = () => {
+const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
+
+    const handleSignOut = async () => {
+        try {
+          await client?.disconnect();
+          await auth.signOut();
+          navigation.navigate('LoginScreen');
+        } catch (error) {
+          Alert.alert("Error", "Failed to sign out");
+        }
+      };
+   
+
+
   const [client, setClient] = useState<any>(null);
   const [currentMode, setCurrentMode] = useState("none");
   const [sensorData, setSensorData] = useState({
@@ -66,6 +98,8 @@ const MQTTClient = () => {
     const num = parseFloat(val);
     return isFinite(num) ? num : 0; // Replace invalid numbers with 0
   };
+
+  
 
 
   const ecgData = useRef<number[]>([]);
@@ -160,7 +194,8 @@ const MQTTClient = () => {
       Math.max(-10000, Math.min(10000, num)) // Clamp values between -10k and 10k
     );
     
-    return (  // Added missing return statement
+    return (
+          // Added missing return statement
       <LineChart
         data={{
           labels: [],
@@ -188,29 +223,49 @@ const MQTTClient = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.container1}></View>
-      <Text style={styles.header}>Vital Link</Text>
+      <View style={styles.headerContainer}>
+        <Text style={styles.header}>Vital Link</Text>
+        <TouchableOpacity 
+          style={styles.signOutButton}
+          onPress={handleSignOut}
+        >
+          
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
+      </View>
+
       
-      <View style={styles.buttonContainer}>
-        {["ecg", "temp", "health", "emg"].map((mode) => (
-          <TouchableOpacity
-            key={mode}
-            style={[
-              styles.button,
-              currentMode === mode && styles.activeButton
-            ]}
-            onPress={() => sendCommand(mode)}
-          >
-            <Text style={styles.buttonText}>{mode.toUpperCase()}</Text>
-          </TouchableOpacity>
-        ))}
-         <TouchableOpacity
+    <View style={styles.buttonContainer}>
+  {(["ecg", "temp", "health", "emg"] as (keyof ModeDisplayNames)[]).map((mode) => {
+    const modeDisplayNames: ModeDisplayNames = {
+      ecg: "ECG Monitor",
+      temp: "Temperature",
+      health: "HR/SpO2",
+      emg: "EMG Scan"
+    };
+
+    return (
+        <TouchableOpacity
+        key={mode}
+        style={[
+          styles.button,
+          currentMode === mode && styles.activeButton
+        ]}
+        onPress={() => sendCommand(mode)}
+      >
+        <Text style={styles.buttonText}>
+          {modeDisplayNames[mode]}
+        </Text>
+      </TouchableOpacity>
+    );
+  })}
+  <TouchableOpacity
     style={styles.stopButton}
     onPress={() => sendCommand("stop")}
   >
-    <Text style={styles.buttonText}>STOP</Text>
+    <Text style={styles.buttonText}>Stop</Text>
   </TouchableOpacity>
-      </View>
+</View>
 
       {currentMode === "ecg" && (
         <View style={styles.dataCard}>
@@ -288,43 +343,90 @@ const MQTTClient = () => {
 
 // Keep the same styles as previous version
 const styles = StyleSheet.create({
-  container1:{
-    padding:20
-  },
-  container: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: '#f5f9fc',
-  },
-  header: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginBottom: 20,
-    gap: 10,
-  },
-  button: {
-    backgroundColor: '#3498db',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    minWidth: 80,
-  },
-  activeButton: {
-    backgroundColor: '#27ae60',
-  },
-  buttonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 14,
-  },
+    container: {
+        flex: 1,
+        padding: 16,
+        backgroundColor: '#f5f9fc',
+      },
+      headerContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+      },
+      header: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: '#2c3e50',
+        letterSpacing: 0.8,
+      },
+      signOutButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#e74c3c',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        gap: 6,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      signOutText: {
+        color: 'white',
+        fontWeight: '600',
+        fontSize: 12,
+      },
+      buttonContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        marginBottom: 20,
+        gap: 12,
+      },
+      button: {
+        backgroundColor: '#3498db',
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        minWidth: 70,
+        alignItems: 'center',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        flexDirection: 'row',
+        gap: 6,
+      },
+      activeButton: {
+        backgroundColor: '#27ae60',
+        shadowColor: '#27ae60',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 6,
+      },
+      buttonText: {
+        color: 'white',
+        fontWeight: '700',
+        fontSize: 12,
+        letterSpacing: 0.5,
+      },
+      stopButton: {
+        backgroundColor: '#e74c3c',
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        elevation: 2,
+        shadowColor: '#e74c3c',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
   dataCard: {
     flex: 1,
     backgroundColor: 'white',
@@ -370,13 +472,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2c3e50',
   },
-  stopButton: {
-    backgroundColor: '#e74c3c',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    minWidth: 80,
-  },
   infoContainer: {
     marginTop: 16,
     paddingTop: 12,
@@ -400,6 +495,25 @@ const styles = StyleSheet.create({
   parameterText: {
     fontSize: 14,
     color: '#2c3e50',
+  },
+  headerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  headerButtonText: {
+    color: '#e74c3c',
+    fontWeight: '600',
+    marginLeft: 6,
+    fontSize: 14,
   },
 });
 

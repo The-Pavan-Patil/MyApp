@@ -7,20 +7,29 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { enableScreens } from 'react-native-screens';
 enableScreens();
 
-const Stack = createNativeStackNavigator();
+export type RootStackParamList = {
+  LoginScreen: undefined;
+  MQTTClient: undefined;
+  // ... other screens
+};
+const Stack = createNativeStackNavigator<RootStackParamList>();
 export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
         <Stack.Navigator>
-            <Stack.Screen
-                options={{ headerShown: false}}
-                name={'Login'}
-                component={LoginScreen}
-            />
-            <Stack.Screen name={'MQTTClient'} component={MQTTClient} />
+          <Stack.Screen
+            name="LoginScreen"
+            component={LoginScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen 
+            name="MQTTClient" 
+            component={MQTTClient}
+            options={{ title: 'Vital Link' }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
-      </SafeAreaProvider>
+    </SafeAreaProvider>
   );
 }
