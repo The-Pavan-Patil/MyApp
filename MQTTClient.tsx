@@ -58,9 +58,8 @@ const modeInformation = {
     parameters: [
       "SpO2 Normal: 95-100%",
       "Resting HR: 60-100 BPM",
-      "BP Normal: 120/80 mmHg"
     ]
-  },
+  }, 
   emg: {
     title: "EMG Monitoring",
     description: "Electromyography measures muscle electrical activity",
