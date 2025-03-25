@@ -126,65 +126,127 @@ const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
   const emgData = useRef<number[]>([]);
 
   useEffect(() => {
+    return () => {
+      if (collectionInterval) {
+        clearInterval(collectionInterval);
+      }
+      if (client) {
+        client.disconnect();
+      }
+    };
+  }, [client, collectionInterval]);
+  useEffect(() => {
     const clientId = `app-client-${Date.now()}`;
+  
+    const initializeMQTT = async () => {
+      try {
+        const mqttClient = await MQTT.createClient({
+          uri: MQTT_BROKER_URL,
+          clientId,
+          auth: true,
+          user: 'thepavanpatil',
+          pass: 'Patil@1234',
+        });
+  
+        mqttClient.on("connect", () => {
+          console.log("MQTT Connected");
+          TOPICS.forEach(topic => {
+            mqttClient.subscribe(topic, 0);
+            console.log(`Subscribed to ${topic}`);
+          });
+        });
 
-    MQTT.createClient({
-      uri: MQTT_BROKER_URL,
-      clientId,
-      auth: true,
-      user: 'thepavanpatil',
-      pass: 'Patil@1234',
-    }).then((mqttClient) => {
-      mqttClient.on("connect", () => {
-        TOPICS.forEach(topic => mqttClient.subscribe(topic, 0));
-      });
-
-      mqttClient.on("message", (msg) => {
-        const value = msg.data.toString();
-        
-        // Add data collection logic
-        if (isGeneratingReport) {
-          switch(msg.topic) {
-            case "sensor/ecg":
-              setCollectedData(prev => ({
-                ...prev,
-                ecg: [...prev.ecg, parseSafeFloat(value)]
-              }));
-              break;
-            case "sensor/temp":
-              setCollectedData(prev => ({
-                ...prev,
-                temp: [...prev.temp, parseSafeFloat(value)]
-              }));
-              break;
-            case "sensor/health":
-              const [hr, spo2] = value.split(",");
-              setCollectedData(prev => ({
-                ...prev,
-                health: {
-                  heartRate: [...prev.health.heartRate, parseSafeFloat(hr.split(":")[1] || "0")],
-                  spO2: [...prev.health.spO2, parseSafeFloat(spo2.split(":")[1] || "0")]
-                }
-              }));
-              break;
-            case "sensor/emg":
-              setCollectedData(prev => ({
-                ...prev,
-                emg: [...prev.emg, parseSafeFloat(value)]
-              }));
-              break;
+        mqttClient.on("message", (msg) => {
+          const value = msg.data.toString();
+          console.log(`Message received on ${msg.topic}`);
+          // Add data collection logic
+          if (isGeneratingReport) {
+            switch(msg.topic) {
+              case "sensor/ecg":
+                setCollectedData(prev => ({
+                  ...prev,
+                  ecg: [...prev.ecg, parseSafeFloat(value)]
+                }));
+                break;
+              case "sensor/temp":
+                setCollectedData(prev => ({
+                  ...prev,
+                  temp: [...prev.temp, parseSafeFloat(value)]
+                }));
+                break;
+              case "sensor/health":
+                const [hr, spo2] = value.split(",");
+                setCollectedData(prev => ({
+                  ...prev,
+                  health: {
+                    heartRate: [...prev.health.heartRate, parseSafeFloat(hr.split(":")[1] || "0")],
+                    spO2: [...prev.health.spO2, parseSafeFloat(spo2.split(":")[1] || "0")]
+                  }
+                }));
+                break;
+              case "sensor/emg":
+                setCollectedData(prev => ({
+                  ...prev,
+                  emg: [...prev.emg, parseSafeFloat(value)]
+                }));
+                break;
+            }
+            switch(msg.topic) {
+              case "sensor/ecg":
+                ecgData.current = [
+                  ...ecgData.current.slice(-MAX_DATA_POINTS + 1), 
+                  parseSafeFloat(value)
+                ];
+                setSensorData(prev => ({...prev, ecg: [...ecgData.current]}));
+                break;
+                
+              case "sensor/temp":
+                setSensorData(prev => ({...prev, temp: `${value}°C`}));
+                break;
+                
+              case "sensor/health":
+                const [hr, spo2] = value.split(",");
+                setSensorData(prev => ({
+                  ...prev,
+                  health: {
+                    heartRate: hr.split(":")[1] || "N/A",
+                    spO2: spo2.split(":")[1] || "N/A"
+                  }
+                }));
+                break;
+                
+              case "sensor/emg":
+                emgData.current = [
+                  ...emgData.current.slice(-MAX_DATA_POINTS + 1), 
+                  parseSafeFloat(value)
+                ];
+                setSensorData(prev => ({...prev, emg: [...emgData.current]}));
+                break;
+            }
           }
-        }
+        });
+
+        mqttClient.on("error", (error) => {
+          console.error("MQTT Error:", error);
+        });
         
-        // ... rest of existing message handling code ...
-      });
+        await mqttClient.connect();
+        setClient(mqttClient);
+      } catch (error) {
+        console.error("MQTT Initialization Error:", error);
+        Alert.alert("Connection Error", "Failed to connect to MQTT broker");
+      }
+    };
 
-      mqttClient.connect();
-      setClient(mqttClient);
-    });
+    initializeMQTT();
 
-    return () => client?.disconnect();
-  }, []);
+    return () => {
+      if (client) {
+        client.disconnect();
+        console.log("MQTT Disconnected");
+      }
+    };
+}, [client, isGeneratingReport]); 
 
   const sendCommand = (command: string) => {
     if (client?.isConnected()) {
@@ -195,16 +257,17 @@ const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
   const startDataCollection = () => {
     if (!client) return;
   
-    // Clear previous data
+    // Clear previous data and reset mode
     setCollectedData({
       ecg: [],
       temp: [],
       health: { heartRate: [], spO2: [] },
       emg: []
     });
-  
-    setIsGeneratingReport(true);
+    setCurrentMode("none"); // Reset current mode
     setShowReport(false);
+    
+    setIsGeneratingReport(true);
     
     // Cycle through modes every 5 seconds
     const modes = ["ecg", "temp", "health", "emg"];
@@ -216,6 +279,7 @@ const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
         generateFinalReport();
         setIsGeneratingReport(false);
         sendCommand("stop");
+        setCurrentMode("none"); // Ensure mode is reset after completion
         return;
       }
       
