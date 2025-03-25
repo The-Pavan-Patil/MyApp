@@ -26,12 +26,20 @@ const LoginScreen: FunctionComponent = () => {
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user && !isSigningUp) {
-                navigation.replace("MQTTClient");
+          if (user && !isSigningUp) {
+            if (user.emailVerified) {
+              navigation.replace("MQTTClient");
+            } else {
+              Alert.alert(
+                "Verify Your Email",
+                "Please verify your email before accessing the app."
+              );
+              auth.signOut();
             }
+          }
         });
         return unsubscribe;
-    }, [navigation, isSigningUp]);
+      }, [navigation, isSigningUp]);
 
    const handleSignUp = async () => {
   setIsSigningUp(true);
@@ -64,13 +72,37 @@ const LoginScreen: FunctionComponent = () => {
 };
 
 
-    const handleLogin = async () => {
-        try {
-            await signInWithEmailAndPassword(auth, email, password);
-        } catch (error: any) {
-            Alert.alert("Error", error.message);
-        }
-    };   
+const handleLogin = async () => {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      
+      if (!user.emailVerified) {
+        await auth.signOut();
+        Alert.alert(
+          "Email Not Verified",
+          "Please verify your email first. We've sent you a verification email.",
+          [
+            {
+              text: "Resend Verification",
+              onPress: async () => {
+                await sendEmailVerification(user);
+                Alert.alert("Verification Sent", "Please check your email.");
+              }
+            },
+            { text: "OK" }
+          ]
+        );
+        return;
+      }
+      
+      // Proceed with normal login if verified
+      navigation.replace("MQTTClient");
+    } catch (error: any) {
+      Alert.alert("Error", error.message);
+    }
+  };
+   
 
     return (
         <SafeAreaProvider>
