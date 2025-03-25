@@ -8,15 +8,12 @@ import { RootStackParamList } from './App';
 
 
 
-//for data collection
-
-
-
-
-
 type MQTTClientProps = {
     navigation: StackNavigationProp<RootStackParamList, 'MQTTClient'>;
   };
+
+
+
   type ModeDisplayNames = {
     ecg: string;
     temp: string;
@@ -34,8 +31,7 @@ const modeInformation = {
   ecg: {
     title: "ECG Monitoring",
     description: "Electrocardiogram (ECG) measures the electrical activity of the heart. ",
-    parameters: [
-      "Note: if you found any abnormility in the ECG signal please consult the doctor",  
+    parameters: [  
       "Normal HR: 60-100 BPM",
       "P-wave: <120ms",
       "QRS Complex: <110ms",
@@ -58,40 +54,22 @@ const modeInformation = {
     parameters: [
       "SpO2 Normal: 95-100%",
       "Resting HR: 60-100 BPM",
+      "Bradycardia : <60 BPM",
+      "Tachycardia: >100 BPM"
     ]
-  }, 
+  },
   emg: {
     title: "EMG Monitoring",
     description: "Electromyography measures muscle electrical activity",
     parameters: [
-    "Try to move the muscle to see the effect on the EMG signal",
-    "Any fluctuation in the EMG signal may indicate muscles are active",]
-      
+       "Try to move the muscle to see the effect on the EMG signal",
+      "Any fluctuation in the EMG signal may indicate muscles are active"
+    ]
   }
 };
 
 
-//Main  state component
-
-
-
-
 const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
-    const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-    const [reportData, setReportData] = useState<any>(null);
-    const [showReport, setShowReport] = useState(false);
-    const [collectionInterval, setCollectionInterval] = useState<NodeJS.Timeout|null>(null);
-    const [collectedData, setCollectedData] = useState<{
-  ecg: number[];
-  temp: number[];
-  health: { heartRate: number[]; spO2: number[] };
-  emg: number[];
-}>({
-  ecg: [],
-  temp: [],
-  health: { heartRate: [], spO2: [] },
-  emg: []
-});
 
     const handleSignOut = async () => {
         try {
@@ -126,127 +104,62 @@ const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
   const emgData = useRef<number[]>([]);
 
   useEffect(() => {
-    return () => {
-      if (collectionInterval) {
-        clearInterval(collectionInterval);
-      }
-      if (client) {
-        client.disconnect();
-      }
-    };
-  }, [client, collectionInterval]);
-  useEffect(() => {
     const clientId = `app-client-${Date.now()}`;
-  
-    const initializeMQTT = async () => {
-      try {
-        const mqttClient = await MQTT.createClient({
-          uri: MQTT_BROKER_URL,
-          clientId,
-          auth: true,
-          user: 'thepavanpatil',
-          pass: 'Patil@1234',
-        });
-  
-        mqttClient.on("connect", () => {
-          console.log("MQTT Connected");
-          TOPICS.forEach(topic => {
-            mqttClient.subscribe(topic, 0);
-            console.log(`Subscribed to ${topic}`);
-          });
-        });
 
-        mqttClient.on("message", (msg) => {
-          const value = msg.data.toString();
-          console.log(`Message received on ${msg.topic}`);
-          // Add data collection logic
-          if (isGeneratingReport) {
-            switch(msg.topic) {
-              case "sensor/ecg":
-                setCollectedData(prev => ({
-                  ...prev,
-                  ecg: [...prev.ecg, parseSafeFloat(value)]
-                }));
-                break;
-              case "sensor/temp":
-                setCollectedData(prev => ({
-                  ...prev,
-                  temp: [...prev.temp, parseSafeFloat(value)]
-                }));
-                break;
-              case "sensor/health":
-                const [hr, spo2] = value.split(",");
-                setCollectedData(prev => ({
-                  ...prev,
-                  health: {
-                    heartRate: [...prev.health.heartRate, parseSafeFloat(hr.split(":")[1] || "0")],
-                    spO2: [...prev.health.spO2, parseSafeFloat(spo2.split(":")[1] || "0")]
-                  }
-                }));
-                break;
-              case "sensor/emg":
-                setCollectedData(prev => ({
-                  ...prev,
-                  emg: [...prev.emg, parseSafeFloat(value)]
-                }));
-                break;
-            }
-            switch(msg.topic) {
-              case "sensor/ecg":
-                ecgData.current = [
-                  ...ecgData.current.slice(-MAX_DATA_POINTS + 1), 
-                  parseSafeFloat(value)
-                ];
-                setSensorData(prev => ({...prev, ecg: [...ecgData.current]}));
-                break;
-                
-              case "sensor/temp":
-                setSensorData(prev => ({...prev, temp: `${value}°C`}));
-                break;
-                
-              case "sensor/health":
-                const [hr, spo2] = value.split(",");
-                setSensorData(prev => ({
-                  ...prev,
-                  health: {
-                    heartRate: hr.split(":")[1] || "N/A",
-                    spO2: spo2.split(":")[1] || "N/A"
-                  }
-                }));
-                break;
-                
-              case "sensor/emg":
-                emgData.current = [
-                  ...emgData.current.slice(-MAX_DATA_POINTS + 1), 
-                  parseSafeFloat(value)
-                ];
-                setSensorData(prev => ({...prev, emg: [...emgData.current]}));
-                break;
-            }
-          }
-        });
+    MQTT.createClient({
+      uri: MQTT_BROKER_URL,
+      clientId,
+      auth: true,
+      user: 'thepavanpatil',
+      pass: 'Patil@1234',
+    }).then((mqttClient) => {
+      mqttClient.on("connect", () => {
+        TOPICS.forEach(topic => mqttClient.subscribe(topic, 0));
+      });
 
-        mqttClient.on("error", (error) => {
-          console.error("MQTT Error:", error);
-        });
+      mqttClient.on("message", (msg) => {
+        const value = msg.data.toString();
         
-        await mqttClient.connect();
-        setClient(mqttClient);
-      } catch (error) {
-        console.error("MQTT Initialization Error:", error);
-        Alert.alert("Connection Error", "Failed to connect to MQTT broker");
-      }
-    };
+        switch(msg.topic) {
+          case "sensor/ecg":
+            ecgData.current = [
+              ...ecgData.current.slice(-MAX_DATA_POINTS + 1), 
+              parseSafeFloat(value) // Use safe parser
+            ];
+            setSensorData(prev => ({...prev, ecg: [...ecgData.current]}));
+            break;
+            
+          case "sensor/temp":
+            setSensorData(prev => ({...prev, temp: `${value}°C`}));
+            break;
+            
+          case "sensor/health":
+            const [hr, spo2] = value.split(",");
+            setSensorData(prev => ({
+              ...prev,
+              health: {
+                heartRate: hr.split(":")[1] || "N/A",
+                spO2: spo2.split(":")[1] || "N/A"
+              }
+            }));
+            break;
+            
+          case "sensor/emg":
+            emgData.current = [
+              ...emgData.current.slice(-MAX_DATA_POINTS + 1), 
+              parseSafeFloat(value) // Use safe parser
+            ];
+            setSensorData(prev => ({...prev, emg: [...emgData.current]}));
+            break;
+        }
+      });
 
-    initializeMQTT();
+      mqttClient.connect();
+      setClient(mqttClient);
+    });
 
-    return () => {
-      if (client) {
-        client.disconnect();
-        console.log("MQTT Disconnected");
-      }
-    };
-}, [client, isGeneratingReport]); 
+    return () => client?.disconnect();
+  }, []);
 
   const sendCommand = (command: string) => {
     if (client?.isConnected()) {
@@ -254,96 +167,6 @@ const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
       setCurrentMode(command === "stop" ? "none" : command);
     }
   };
-  const startDataCollection = () => {
-    if (!client) return;
-  
-    // Clear previous data and reset mode
-    setCollectedData({
-      ecg: [],
-      temp: [],
-      health: { heartRate: [], spO2: [] },
-      emg: []
-    });
-    setCurrentMode("none"); // Reset current mode
-    setShowReport(false);
-    
-    setIsGeneratingReport(true);
-    
-    // Cycle through modes every 5 seconds
-    const modes = ["ecg", "temp", "health", "emg"];
-    let currentIndex = 0;
-    
-    const interval = setInterval(() => {
-      if (currentIndex >= modes.length) {
-        clearInterval(interval);
-        generateFinalReport();
-        setIsGeneratingReport(false);
-        sendCommand("stop");
-        setCurrentMode("none"); // Ensure mode is reset after completion
-        return;
-      }
-      
-      sendCommand(modes[currentIndex]);
-      currentIndex++;
-    }, 5000);
-  
-    setCollectionInterval(interval);
-  };
-  
-  // Add this function to generate the report
-  const generateFinalReport = () => {
-    // Calculate averages
-    
-    const ecgAvg = collectedData.ecg.reduce((a, b) => a + b, 0) / collectedData.ecg.length || 0;
-    const tempAvg = collectedData.temp.reduce((a, b) => a + b, 0) / collectedData.temp.length || 0;
-    const hrAvg = collectedData.health.heartRate.reduce((a, b) => a + b, 0) / collectedData.health.heartRate.length || 0;
-    const spO2Avg = collectedData.health.spO2.reduce((a, b) => a + b, 0) / collectedData.health.spO2.length || 0;
-    const emgAvg = collectedData.emg.reduce((a, b) => a + b, 0) / collectedData.emg.length || 0;
-    const tempStatus = getTemperatureStatus(tempAvg.toFixed(2));
-    const hrStatus = getHeartRateStatus(hrAvg.toFixed(0));
-    const spO2Status = getSpO2Status(spO2Avg.toFixed(0));
-    
-    // Create report object
-    const report = {
-    timestamp: new Date().toLocaleString(),
-    patientEmail: auth.currentUser?.email || "Not available",
-    ecg: {
-      average: ecgAvg.toFixed(2),
-      max: Math.max(...collectedData.ecg).toFixed(2),
-      min: Math.min(...collectedData.ecg).toFixed(2)
-    },
-    temperature: {
-      average: tempAvg.toFixed(2),
-      unit: "°C",
-      status: tempStatus.status,
-      color: tempStatus.color
-    },
-    heartRate: {
-      average: hrAvg.toFixed(0),
-      unit: "BPM",
-      status: hrStatus.status,
-      color: hrStatus.color
-    },
-    spO2: {
-      average: spO2Avg.toFixed(0),
-      unit: "%",
-      status: spO2Status.status,
-      color: spO2Status.color
-    },
-    emg: {
-      average: emgAvg.toFixed(2),
-      max: Math.max(...collectedData.emg).toFixed(2),
-      min: Math.min(...collectedData.emg).toFixed(2)
-    }
-  };
-
-  
-    setReportData(report);
-    setShowReport(true);
-  };
-
-
-  //Helper function to send command to the device
   const getTemperatureStatus = (temp: string) => {
     const value = parseFloat(temp);
     if (isNaN(value)) return { status: 'N/A', color: '#7f8c8d' };
@@ -351,6 +174,7 @@ const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
     if (value >= 38) return { status: 'Fever', color: '#e74c3c' };
     return { status: 'Normal', color: '#2ecc71' };
   };
+  
   const getHeartRateStatus = (hr: string) => {
     const value = parseFloat(hr);
     if (isNaN(value)) return { status: 'N/A', color: '#7f8c8d' };
@@ -358,6 +182,7 @@ const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
     if (value > 100) return { status: 'Tachycardia (High)', color: '#e74c3c' };
     return { status: 'Normal', color: '#2ecc71' };
   };
+  
   const getSpO2Status = (spo2: string) => {
     const value = parseFloat(spo2);
     if (isNaN(value)) return { status: 'N/A', color: '#7f8c8d' };
@@ -365,18 +190,6 @@ const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
     return { status: 'Normal', color: '#2ecc71' };
   };
   
-
-
-
-
-
-
-
-
-
-
-
-
   const chartConfig = {
     backgroundGradientFrom: "#fff",
     backgroundGradientTo: "#fff",
@@ -472,83 +285,7 @@ const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
   >
     <Text style={styles.buttonText}>Stop</Text>
   </TouchableOpacity>
-  <TouchableOpacity
-  style={[styles.button, styles.reportButton]}
-  onPress={startDataCollection}
-  disabled={isGeneratingReport}
->
-  <Text style={styles.buttonText}>
-    {isGeneratingReport ? "Generating..." : "Generate Report"}
-  </Text>
-</TouchableOpacity>
-
 </View>
-
-{showReport && reportData && (
-  <View style={styles.reportContainer}>
-  <View style={styles.reportHeaderContainer}>
-    <Text style={styles.reportHeader}>Health Report</Text>
-    <Text style={styles.patientEmail}>{reportData.patientEmail}</Text>
-  </View>
-  <View style={styles.reportSection}>
-      <Text style={styles.reportTitle}>ECG Analysis</Text>
-      <Text>Average: {reportData.ecg.average} mV</Text>
-      <Text>Max: {reportData.ecg.max} mV</Text>
-      <Text>Min: {reportData.ecg.min} mV</Text>
-    </View>
-
-  <Text style={styles.reportTimestamp}>{reportData.timestamp}</Text>
-  <View style={styles.reportSection}>
-      <Text style={styles.reportTitle}>Temperature</Text>
-      <View style={styles.reportRow}>
-        <Text>Average: {reportData.temperature.average} °C</Text>
-        <View style={[styles.reportStatus, { 
-          backgroundColor: reportData.temperature.color 
-        }]}>
-          <Text style={styles.reportStatusText}>
-            {reportData.temperature.status}
-          </Text>
-        </View>
-      </View>
-    </View>
-
-    <View style={styles.reportSection}>
-      <Text style={styles.reportTitle}>Vital Signs</Text>
-      <View style={styles.reportRow}>
-        <Text>Heart Rate: {reportData.heartRate.average} BPM</Text>
-        <View style={[styles.reportStatus, { 
-          backgroundColor: reportData.heartRate.color 
-        }]}>
-          <Text style={styles.reportStatusText}>
-            {reportData.heartRate.status}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.reportRow}>
-        <Text>SpO2: {reportData.spO2.average}%</Text>
-        <View style={[styles.reportStatus, { 
-          backgroundColor: reportData.spO2.color 
-        }]}>
-          <Text style={styles.reportStatusText}>
-            {reportData.spO2.status}
-          </Text>
-        </View>
-      </View>
-      {parseFloat(reportData.spO2.average) < 95 && (
-        <Text style={styles.reportNote}>
-          Note: Consider supplemental oxygen
-        </Text>
-      )}
-    </View>
-
-    <View style={styles.reportSection}>
-      <Text style={styles.reportTitle}>EMG Analysis</Text>
-      <Text>Average: {reportData.emg.average} mV</Text>
-      <Text>Max: {reportData.emg.max} mV</Text>
-      <Text>Min: {reportData.emg.min} mV</Text>
-    </View>
-  </View>
-)}
 
       {currentMode === "ecg" && (
         <View style={styles.dataCard}>
@@ -582,7 +319,7 @@ const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
       </View>
       )}
 
-      {currentMode === "temp" && (
+{currentMode === "temp" && (
   <View style={styles.dataCard}>
     <Text style={styles.cardTitle}>{modeInformation.temp.title}</Text>
     <View style={styles.tempContainer}>
@@ -636,8 +373,9 @@ const MQTTClient:React.FC<MQTTClientProps> = ({ navigation }) => {
     </View>
     <View style={styles.healthStatus}>
       <Text style={styles.statusMessage}>
-      {sensorData.health.spO2 !== "N/A" && 
-        parseFloat(sensorData.health.spO2) < 95 && " - Consider supplemental oxygen"}
+        {getSpO2Status(sensorData.health.spO2).status}
+        {sensorData.health.spO2 !== "N/A" &&  parseFloat(sensorData.health.spO2) < 95 &&  " - Provide supplemental oxygen "}
+
       </Text>
     </View>
 
@@ -830,44 +568,6 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontSize: 14,
   },
-
-  reportButton: {
-    backgroundColor: '#9b59b6',
-    marginTop: 10,
-  },
-  reportContainer: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    elevation: 3,
-  },
-  reportHeader: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 8,
-  },
-  reportTimestamp: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginBottom: 16,
-  },
-  reportSection: {
-    marginVertical: 8,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1',
-  },
-  reportTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#3498db',
-    marginBottom: 4,
-  },
   tempContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -903,41 +603,5 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     fontStyle: 'italic',
   },
-  reportHeaderContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  patientEmail: {
-    fontSize: 12,
-    color: '#3498db',
-    fontStyle: 'italic',
-  },
-  reportRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginVertical: 4,
-  },
-  reportStatus: {
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-  },
-  reportStatusText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  reportNote: {
-    color: '#e74c3c',
-    fontSize: 12,
-    marginTop: 8,
-    fontStyle: 'italic',
-  },
-
-
 });
-
-export default MQTTClient;
+export default MQTTClient; 
