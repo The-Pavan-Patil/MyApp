@@ -1,23 +1,29 @@
 import { FunctionComponent, useEffect, useState } from "react";
 import { KeyboardAvoidingView, StyleSheet, Text, TextInput, TouchableOpacity, View, Alert } from "react-native";
-import { auth } from "./firebase";
+import { auth } from "../firebase";
 import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import Lottie from 'lottie-react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import animationData from './assets/Animation.json';
+import animationData from '../assets/Animation.json';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
+import { MqttClient } from "mqtt";
 
 type RootStackParamList = {
   Home: undefined;
-  MQTTClient: undefined;
-  LoginScreen: undefined
+  MQTTClient: { userType: 'doctor' | 'patient' };
+  LoginScreen: undefined;
+  ReportScreen: { userType: 'doctor' | 'patient' };
 };
 
-type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'LoginScreen'>;
+type LoginScreenNavigationProp = StackNavigationProp<
+  RootStackParamList, 
+  'LoginScreen' | 'MQTTClient' | 'ReportScreen'
+>;
 
 const LoginScreen: FunctionComponent = () => {
+  const [userType, setUserType] = useState<'doctor' | 'patient' | null>(null)
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSigningUp, setIsSigningUp] = useState(false); // Add this state
@@ -26,9 +32,12 @@ const LoginScreen: FunctionComponent = () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user && !isSigningUp) {
+      if (user && !isSigningUp && userType) {
         if (user.emailVerified) {
-          navigation.replace("MQTTClient");
+          navigation.replace(
+            userType === 'doctor' ? 'MQTTClient' : 'ReportScreen',
+            { userType }
+          );
         } else {
           Alert.alert(
             "Verify Your Email",
@@ -42,6 +51,10 @@ const LoginScreen: FunctionComponent = () => {
   }, [navigation, isSigningUp]);
 
   const handleSignUp = async () => {
+    if (!userType) {
+      Alert.alert("Error", "Please select your role first");
+      return;
+    }
     setIsSigningUp(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -73,10 +86,14 @@ const LoginScreen: FunctionComponent = () => {
 
 
   const handleLogin = async () => {
+    if (!userType) {
+      Alert.alert("Error", "Please select your role first");
+      return;
+    }
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
+  
       if (!user.emailVerified) {
         await auth.signOut();
         Alert.alert(
@@ -97,7 +114,10 @@ const LoginScreen: FunctionComponent = () => {
       }
 
       // Proceed with normal login if verified
-      navigation.replace("MQTTClient");
+      navigation.replace(
+        userType === 'doctor' ? 'MQTTClient' : 'ReportScreen',
+        { userType }
+      );
     } catch (error: any) {
       Alert.alert("Error", error.message);
     }
@@ -119,6 +139,20 @@ const LoginScreen: FunctionComponent = () => {
             style={styles.animation}
           />
         </View>
+        <View style={styles.roleContainer}>
+        <TouchableOpacity
+          style={[styles.roleButton, userType === 'doctor' && styles.selectedRole]}
+          onPress={() => setUserType('doctor')}
+        >
+          <Text style={styles.roleText}>I'm a Doctor</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.roleButton, userType === 'patient' && styles.selectedRole]}
+          onPress={() => setUserType('patient')}
+        >
+          <Text style={styles.roleText}>I'm a Patient</Text>
+        </TouchableOpacity>
+      </View>
 
         <View style={styles.inputContainer}>
           <TextInput
@@ -149,6 +183,7 @@ const LoginScreen: FunctionComponent = () => {
             </TouchableOpacity>
           </View>
         </View>
+        
 
         <View style={styles.buttonContainer}>
           <TouchableOpacity
@@ -165,6 +200,7 @@ const LoginScreen: FunctionComponent = () => {
             <Text style={styles.buttonOutlineText}>Register</Text>
           </TouchableOpacity>
         </View>
+        
       </KeyboardAvoidingView>
     </SafeAreaProvider>
   );
@@ -244,6 +280,26 @@ const styles = StyleSheet.create({
   },
   animation: {
     flex: 1,
+  },
+  roleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '80%',
+    marginBottom: 20,
+  },
+  roleButton: {
+    width: '48%',
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#e0e0e0',
+    alignItems: 'center',
+  },
+  selectedRole: {
+    backgroundColor: '#3498db',
+  },
+  roleText: {
+    color: '#2c3e50',
+    fontWeight: '600',
   },
   // Adjust container to add spacing
 
