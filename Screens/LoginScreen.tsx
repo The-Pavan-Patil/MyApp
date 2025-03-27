@@ -9,6 +9,11 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import animationData from '../assets/Animation.json';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
 import { MqttClient } from "mqtt";
+import { getFirestore, doc, setDoc } from "firebase/firestore";
+import { app } from "../firebase";
+
+const db = getFirestore(app);
+
 
 type RootStackParamList = {
   Home: undefined;
@@ -23,6 +28,9 @@ type LoginScreenNavigationProp = StackNavigationProp<
 >;
 
 const LoginScreen: FunctionComponent = () => {
+
+  const [name, setName] = useState('');
+  const [age, setAge] = useState('');
   const [userType, setUserType] = useState<'doctor' | 'patient' | null>(null)
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -51,6 +59,10 @@ const LoginScreen: FunctionComponent = () => {
   }, [navigation, isSigningUp]);
 
   const handleSignUp = async () => {
+    if (!name || !age) {
+      Alert.alert("Error", "Please fill all fields");
+      return;
+    }
     if (!userType) {
       Alert.alert("Error", "Please select your role first");
       return;
@@ -61,7 +73,16 @@ const LoginScreen: FunctionComponent = () => {
       const user = userCredential.user;
 
       // Send verification email
+      
+      await setDoc(doc(db, "users", user.uid), {
+        name,
+        age: parseInt(age),
+        email,
+        userType,
+        createdAt: new Date()
+      });
       await sendEmailVerification(user);
+  
 
       Alert.alert(
         "Verify Your Email",
@@ -72,7 +93,9 @@ const LoginScreen: FunctionComponent = () => {
             onPress: () => {
               setEmail('');
               setPassword('');
-              auth.signOut(); // Sign out until verification
+              setName('');
+              setAge('');
+              auth.signOut();
             }
           }
         ]
@@ -155,6 +178,19 @@ const LoginScreen: FunctionComponent = () => {
       </View>
 
         <View style={styles.inputContainer}>
+        <TextInput
+    placeholder={'Full Name'}
+    style={styles.input}
+    value={name}
+    onChangeText={setName}
+  />
+  <TextInput
+    placeholder={'Age'}
+    style={styles.input}
+    value={age}
+    onChangeText={setAge}
+    keyboardType="numeric"
+  />
           <TextInput
             placeholder={'Email'}
             style={styles.input}
@@ -237,7 +273,7 @@ const styles = StyleSheet.create({
   },
   passwordContainer: {
     position: 'relative',
-    marginTop: 10,
+    marginTop: 1,
   },
   eyeIcon: {
     position: 'absolute',

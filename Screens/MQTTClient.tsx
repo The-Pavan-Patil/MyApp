@@ -75,7 +75,7 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
   const { userType } = route.params as { userType: 'doctor' | 'patient' }
   useEffect(() => {
     if (userType !== 'doctor') {
-      navigation.replace('ReportScreen');
+      navigation.replace('ReportScreen',{userType});
     }
   }, [userType]);
 
@@ -83,7 +83,7 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
     try {
       await client?.disconnect();
       await auth.signOut();
-      navigation.navigate('LoginScreen');
+      navigation.navigate('LoginScreens');
     } catch (error) {
       Alert.alert("Error", "Failed to sign out");
     }
@@ -172,6 +172,13 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
     return () => client?.disconnect();
   }, []);
 
+  const goToReport = (command: string) => {
+    if (client?.isConnected()) {
+      client.publish(COMMAND_TOPIC, command, 0, false);
+      setCurrentMode(command === "stop" ? "none" : command);
+      navigation.navigate('ReportScreen',{userType})
+    }
+  };
   const sendCommand = (command: string) => {
     if (client?.isConnected()) {
       client.publish(COMMAND_TOPIC, command, 0, false);
@@ -255,7 +262,7 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <View style={styles.headerContainer}>
-        <Text style={styles.header}>Vital Link</Text>
+        <Text style={styles.header}>Vita-Link</Text>
         <TouchableOpacity
           style={styles.signOutButton}
           onPress={handleSignOut}
@@ -292,9 +299,9 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
         })}
         <TouchableOpacity
           style={styles.stopButton}
-          onPress={() => sendCommand("stop")}
+          onPress={() => goToReport("stop")}
         >
-          <Text style={styles.buttonText}>Stop</Text>
+          <Text style={styles.buttonText}>Report</Text>
         </TouchableOpacity>
       </View>
 
