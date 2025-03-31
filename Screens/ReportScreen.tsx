@@ -232,8 +232,10 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
                             <Text style={styles.detailText}>{userData.userType}</Text>
                         </View>
                     </View>
+                    
                 </View>
             )}
+            
             <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
                 <TouchableOpacity
                     style={styles.generateButton}
@@ -323,13 +325,7 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
                             </Text>
                             <Text style={styles.assessmentText}>{report.assessment}</Text>
                         </View>
-                        <TouchableOpacity
-                            style={styles.signOutButton}
-                            onPress={handleSignOut}
-                        >
-
-                            <Text style={styles.signOutText}>Sign Out</Text>
-                        </TouchableOpacity>
+                        
                     </View>
 
 

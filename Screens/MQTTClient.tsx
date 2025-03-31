@@ -89,7 +89,10 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
     }
   };
 
-
+  const [ecgSamplingRate, setEcgSamplingRate] = useState(0);
+  const [emgSamplingRate, setEmgSamplingRate] = useState(0);
+  const ecgTimestamps = useRef<number[]>([]);
+  const emgTimestamps = useRef<number[]>([]);
 
   const [client, setClient] = useState<any>(null);
   const [currentMode, setCurrentMode] = useState("none");
@@ -137,6 +140,22 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
               ...ecgData.current.slice(-MAX_DATA_POINTS + 1),
               parseSafeFloat(value) // Use safe parser
             ];
+            const nowEcg = Date.now();
+            ecgTimestamps.current.push(nowEcg);
+            if (ecgTimestamps.current.length > 10) {
+              ecgTimestamps.current.shift();
+            }
+            if (ecgTimestamps.current.length >= 2) {
+              const intervals = [];
+              for (let i = 1; i < ecgTimestamps.current.length; i++) {
+                intervals.push(ecgTimestamps.current[i] - ecgTimestamps.current[i - 1]);
+              }
+              const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+              const rate = avgInterval > 0 ? 1000 / avgInterval : 0;
+              setEcgSamplingRate(rate);
+            } else {
+              setEcgSamplingRate(0);
+            }
             setSensorData(prev => ({ ...prev, ecg: [...ecgData.current] }));
             break;
 
@@ -158,8 +177,25 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
           case "sensor/emg":
             emgData.current = [
               ...emgData.current.slice(-MAX_DATA_POINTS + 1),
-              parseSafeFloat(value) // Use safe parser
+              parseSafeFloat(value)
             ];
+            // Track timestamps for sampling rate calculation
+            const nowEmg = Date.now();
+            emgTimestamps.current.push(nowEmg);
+            if (emgTimestamps.current.length > 10) {
+              emgTimestamps.current.shift();
+            }
+            if (emgTimestamps.current.length >= 2) {
+              const intervals = [];
+              for (let i = 1; i < emgTimestamps.current.length; i++) {
+                intervals.push(emgTimestamps.current[i] - emgTimestamps.current[i - 1]);
+              }
+              const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+              const rate = avgInterval > 0 ? 1000 / avgInterval : 0;
+              setEmgSamplingRate(rate);
+            } else {
+              setEmgSamplingRate(0);
+            }
             setSensorData(prev => ({ ...prev, emg: [...emgData.current] }));
             break;
         }
@@ -227,13 +263,14 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
   };
 
 
-  const renderChart = (data: number[], label: string) => {
+  const renderChart = (data: number[], label: string, samplingRate:number) => {
     const validData = data.map(num =>
       Math.max(-10000, Math.min(10000, num)) // Clamp values between -10k and 10k
     );
 
     return (
       // Added missing return statement
+      <View>
       <LineChart
         data={{
           labels: [],
@@ -256,6 +293,10 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
           paddingLeft: 0
         }}
       />
+      <Text style={styles.samplingRateText}>
+          {samplingRate > 0 ? `Sampling Rate: ${samplingRate.toFixed(1)} Hz` : "Calculating..."}
+        </Text>
+        </View>
     );
   };
 
@@ -308,7 +349,7 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
       {currentMode === "ecg" && (
         <View style={styles.dataCard}>
           <Text style={styles.cardTitle}>{modeInformation.ecg.title}</Text>
-          {renderChart(sensorData.ecg, "ECG")}
+          {renderChart(sensorData.ecg, "ECG", ecgSamplingRate)}
           <View style={styles.infoContainer}>
             <Text style={styles.infoDescription}>{modeInformation.ecg.description}</Text>
             {modeInformation.ecg.parameters.map((param, index) => (
@@ -324,7 +365,7 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
       {currentMode === "emg" && (
         <View style={styles.dataCard}>
           <Text style={styles.cardTitle}>{modeInformation.emg.title}</Text>
-          {renderChart(sensorData.emg, "EMG")}
+          {renderChart(sensorData.emg, "EMG",emgSamplingRate)}
           <View style={styles.infoContainer}>
             <Text style={styles.infoDescription}>{modeInformation.emg.description}</Text>
             {modeInformation.emg.parameters.map((param, index) => (
@@ -383,7 +424,7 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
           <View style={styles.healthRow}>
             <Text style={styles.healthLabel}>SpO2:</Text>
             <View style={styles.vitalContainer}>
-              <Text style={styles.healthValue}>{sensorData.health.spO2}%</Text>
+              <Text style={styles.healthValue}>{sensorData.health.spO2}</Text>
               <View style={[styles.statusIcon, {
                 backgroundColor: getSpO2Status(sensorData.health.spO2).color
               }]} />
@@ -621,5 +662,12 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     fontStyle: 'italic',
   },
+  samplingRateText: {
+    textAlign: 'center',
+    color: '#7f8c8d',
+    fontSize: 12,
+    marginTop: 8,
+  },
 });
-export default MQTTClient; 
+
+export default MQTTClient;
