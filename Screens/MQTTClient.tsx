@@ -7,9 +7,10 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../App';
 
 import { useRoute } from '@react-navigation/native';
+import { Client } from "mqtt";
 
 type MQTTClientProps = {
-  navigation: StackNavigationProp<RootStackParamList,'MQTTClient'>;
+  navigation: StackNavigationProp<RootStackParamList, 'MQTTClient'>;
 };
 
 
@@ -75,12 +76,13 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
   const { userType } = route.params as { userType: 'doctor' | 'patient' }
   useEffect(() => {
     if (userType !== 'doctor') {
-      navigation.replace('ReportScreen',{userType});
+      navigation.replace('ReportScreen', { userType });
     }
   }, [userType]);
 
   const handleSignOut = async () => {
     try {
+      sendCommand('stop');
       await client?.disconnect();
       await auth.signOut();
       navigation.navigate('LoginScreens');
@@ -93,6 +95,9 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
   const [emgSamplingRate, setEmgSamplingRate] = useState(0);
   const ecgTimestamps = useRef<number[]>([]);
   const emgTimestamps = useRef<number[]>([]);
+  const [ecgPeaks, setEcgPeaks] = useState<number[]>([]);
+  const [ecgHeartRate, setEcgHeartRate] = useState<number | null>(null);
+  const analysisWindow = useRef<number>(5); // Seconds of data to analyze
 
   const [client, setClient] = useState<any>(null);
   const [currentMode, setCurrentMode] = useState("none");
@@ -102,6 +107,62 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
     health: { heartRate: "0", spO2: "0" }, // Initialize with number-like strings
     emg: [] as number[],
   });
+  useEffect(() => {
+    const processECG = () => {
+      const data = sensorData.ecg;
+      if (data.length === 0 || ecgSamplingRate === 0) return;
+
+      // Get analysis window (last N seconds of data)
+      const windowSize = ecgSamplingRate * analysisWindow.current;
+      const analysisData = data.slice(-windowSize);
+
+      if (analysisData.length < 2) {
+        setEcgHeartRate(null);
+        return;
+      }
+
+      // Calculate dynamic threshold (50th percentile)
+      const sorted = [...analysisData].sort((a, b) => a - b);
+      const threshold = sorted[Math.floor(sorted.length * 0.5)];
+
+      // Find peaks with minimum distance (0.45s = 150 BPM)
+      const minPeakDistance = Math.floor(0.45 * ecgSamplingRate);
+      const peaks: number[] = [];
+
+      for (let i = 1; i < analysisData.length - 1; i++) {
+        if (analysisData[i] > threshold &&
+          analysisData[i] > analysisData[i - 1] &&
+          analysisData[i] > analysisData[i + 1]) {
+          // Check distance from last peak
+          if (peaks.length === 0 || (i - peaks[peaks.length - 1]) >= minPeakDistance) {
+            peaks.push(i);
+          }
+        }
+      }
+
+      // Calculate heart rate
+      if (peaks.length >= 2) {
+        const rrIntervals: number[] = [];
+        for (let i = 1; i < peaks.length; i++) {
+          const interval = (peaks[i] - peaks[i - 1]) / ecgSamplingRate;
+          if (interval > 0.3 && interval < 2.0) { // Validate physiologically possible
+            rrIntervals.push(interval);
+          }
+        }
+
+        if (rrIntervals.length > 0) {
+          const avgRR = rrIntervals.reduce((a, b) => a + b) / rrIntervals.length;
+          const hr = Math.min(Math.max(60 / avgRR, 30), 200); // Clamp to realistic range
+          setEcgHeartRate(hr);
+          return;
+        }
+      }
+
+      setEcgHeartRate(null);
+    };
+
+    processECG();
+  }, [sensorData.ecg, ecgSamplingRate]);
 
   const parseSafeFloat = (val: string) => {
     const num = parseFloat(val);
@@ -114,11 +175,11 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
   const ecgData = useRef<number[]>([]);
   const emgData = useRef<number[]>([]);
 
-  
+
 
   useEffect(() => {
     const clientId = `app-client-${Date.now()}`;
-  
+
 
     MQTT.createClient({
       uri: MQTT_BROKER_URL,
@@ -212,7 +273,7 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
     if (client?.isConnected()) {
       client.publish(COMMAND_TOPIC, command, 0, false);
       setCurrentMode(command === "stop" ? "none" : command);
-      navigation.navigate('ReportScreen',{userType})
+      navigation.navigate('ReportScreen', { userType })
     }
   };
   const sendCommand = (command: string) => {
@@ -263,7 +324,7 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
   };
 
 
-  const renderChart = (data: number[], label: string, samplingRate:number) => {
+  const renderChart = (data: number[], label: string, samplingRate: number) => {
     const validData = data.map(num =>
       Math.max(-10000, Math.min(10000, num)) // Clamp values between -10k and 10k
     );
@@ -271,32 +332,32 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
     return (
       // Added missing return statement
       <View>
-      <LineChart
-        data={{
-          labels: [],
-          datasets: [{ data: validData }]
-        }}
-        width={Dimensions.get("window").width - 32}
-        height={220}
-        chartConfig={chartConfig}
-        bezier
-        withHorizontalLabels={false}
-        withVerticalLabels={false}
-        withDots={false}
+        <LineChart
+          data={{
+            labels: [],
+            datasets: [{ data: validData }]
+          }}
+          width={Dimensions.get("window").width - 32}
+          height={220}
+          chartConfig={chartConfig}
+          bezier
+          withHorizontalLabels={false}
+          withVerticalLabels={false}
+          withDots={false}
 
-        withInnerLines={false}
-        withOuterLines={false}
-        withScrollableDot={false}
-        style={{
-          backgroundColor: "white",
-          paddingRight: 0,
-          paddingLeft: 0
-        }}
-      />
-      <Text style={styles.samplingRateText}>
+          withInnerLines={false}
+          withOuterLines={false}
+          withScrollableDot={false}
+          style={{
+            backgroundColor: "white",
+            paddingRight: 0,
+            paddingLeft: 0
+          }}
+        />
+        <Text style={styles.samplingRateText}>
           {samplingRate > 0 ? `Sampling Rate: ${samplingRate.toFixed(1)} Hz` : "Calculating..."}
         </Text>
-        </View>
+      </View>
     );
   };
 
@@ -365,17 +426,17 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
       {currentMode === "emg" && (
         <View style={styles.dataCard}>
           <Text style={styles.cardTitle}>{modeInformation.emg.title}</Text>
-          {renderChart(sensorData.emg, "EMG",emgSamplingRate)}
-          <View style={styles.infoContainer}>
-            <Text style={styles.infoDescription}>{modeInformation.emg.description}</Text>
-            {modeInformation.emg.parameters.map((param, index) => (
-              <View key={index} style={styles.parameterItem}>
-                <Text style={styles.bullet}>•</Text>
-                <Text style={styles.parameterText}>{param}</Text>
-              </View>
-            ))}
+          {renderChart(sensorData.emg, "EMG", emgSamplingRate)}
+            <View style={styles.infoContainer}>
+              <Text style={styles.infoDescription}>{modeInformation.emg.description}</Text>
+              {modeInformation.emg.parameters.map((param, index) => (
+                <View key={index} style={styles.parameterItem}>
+                  <Text style={styles.bullet}>•</Text>
+                  <Text style={styles.parameterText}>{param}</Text>
+                </View>
+              ))}
+            </View>
           </View>
-        </View>
       )}
 
       {currentMode === "temp" && (
@@ -455,6 +516,20 @@ const MQTTClient: React.FC<MQTTClientProps> = ({ navigation }) => {
 
 // Keep the same styles as previous version
 const styles = StyleSheet.create({
+  heartRateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2c3e50',
+    textAlign: 'center',
+    marginVertical: 10,
+  },
+  peakIndicator: {
+    position: 'absolute',
+    backgroundColor: 'red',
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
   container: {
     flex: 1,
     padding: 16,

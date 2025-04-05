@@ -125,14 +125,18 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
 
     const handleSignOut = async () => {
         try {
+            if (client?.isConnected()) {
+                client.publish('stop');
+            }
             await client?.disconnect();
             await auth.signOut();
             navigation.navigate('LoginScreens');
+
         } catch (error) {
             Alert.alert("Error", "Failed to sign out");
         }
     };
-   
+
 
     const generateReport = async () => {
         if (!client) return;
@@ -232,10 +236,10 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
                             <Text style={styles.detailText}>{userData.userType}</Text>
                         </View>
                     </View>
-                    
+
                 </View>
             )}
-            
+
             <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
                 <TouchableOpacity
                     style={styles.generateButton}
@@ -252,6 +256,7 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
                         {isGenerating ? "Collecting Data..." : "Generate Full Report"}
                     </Text>
                 </TouchableOpacity>
+                
 
                 {report && (
                     <View style={styles.reportContainer}>
@@ -324,12 +329,20 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
                                 <Icon name="commenting" size={16} /> Medical Assessment
                             </Text>
                             <Text style={styles.assessmentText}>{report.assessment}</Text>
+
                         </View>
-                        
+
                     </View>
 
 
                 )}
+                <TouchableOpacity
+                    style={styles.signout}
+                    onPress={handleSignOut}
+                >
+
+                    <Text style={styles.buttonText}>Sign Out</Text>
+                </TouchableOpacity>
             </ScrollView>
         </View>
     );
@@ -405,6 +418,19 @@ const styles = StyleSheet.create({
     },
     generateButton: {
         backgroundColor: '#3498db',
+        padding: 16,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 20,
+        shadowColor: '#3498db',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 6,
+    },
+    signout: {
+        backgroundColor: 'red',
         padding: 16,
         borderRadius: 12,
         flexDirection: 'row',
