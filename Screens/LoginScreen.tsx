@@ -13,7 +13,7 @@ import { getFirestore, doc, setDoc } from "firebase/firestore";
 import { app } from "../firebase";
 
 const db = getFirestore(app);
-
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
 type RootStackParamList = {
   Home: undefined;
@@ -28,14 +28,14 @@ type LoginScreenNavigationProp = StackNavigationProp<
 >;
 
 const LoginScreen: FunctionComponent = () => {
-
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
   const [userType, setUserType] = useState<'doctor' | 'patient' | null>(null)
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSigningUp, setIsSigningUp] = useState(false); // Add this state
+  const [isSigningUp, setIsSigningUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const navigation = useNavigation<LoginScreenNavigationProp>();
 
   useEffect(() => {
@@ -65,6 +65,14 @@ const LoginScreen: FunctionComponent = () => {
     }
     if (!userType) {
       Alert.alert("Error", "Please select your role first");
+      return;
+    }
+    if (!passwordRegex.test(password)) {
+      setPasswordTouched(true);
+      Alert.alert(
+        "Invalid Password",
+        "Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)."
+      );
       return;
     }
     setIsSigningUp(true);
@@ -163,34 +171,34 @@ const LoginScreen: FunctionComponent = () => {
           />
         </View>
         <View style={styles.roleContainer}>
-        <TouchableOpacity
-          style={[styles.roleButton, userType === 'doctor' && styles.selectedRole]}
-          onPress={() => setUserType('doctor')}
-        >
-          <Text style={styles.roleText}>I'm a Doctor</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.roleButton, userType === 'patient' && styles.selectedRole]}
-          onPress={() => setUserType('patient')}
-        >
-          <Text style={styles.roleText}>I'm a Patient</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={[styles.roleButton, userType === 'doctor' && styles.selectedRole]}
+            onPress={() => setUserType('doctor')}
+          >
+            <Text style={styles.roleText}>I'm a Doctor</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.roleButton, userType === 'patient' && styles.selectedRole]}
+            onPress={() => setUserType('patient')}
+          >
+            <Text style={styles.roleText}>I'm a Patient</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.inputContainer}>
-        <TextInput
-    placeholder={'Full Name'}
-    style={styles.input}
-    value={name}
-    onChangeText={setName}
-  />
-  <TextInput
-    placeholder={'Age'}
-    style={styles.input}
-    value={age}
-    onChangeText={setAge}
-    keyboardType="numeric"
-  />
+          <TextInput
+            placeholder={'Full Name'}
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+          />
+          <TextInput
+            placeholder={'Age'}
+            style={styles.input}
+            value={age}
+            onChangeText={setAge}
+            keyboardType="numeric"
+          />
           <TextInput
             placeholder={'Email'}
             style={styles.input}
@@ -204,7 +212,10 @@ const LoginScreen: FunctionComponent = () => {
               placeholder={'Password'}
               style={styles.input}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(text) => {
+                setPassword(text);
+                setPasswordTouched(true);
+              }}
               secureTextEntry={!showPassword}
             />
             <TouchableOpacity
@@ -217,10 +228,14 @@ const LoginScreen: FunctionComponent = () => {
                 color="#666"
               />
             </TouchableOpacity>
+            {passwordTouched && !passwordRegex.test(password) && (
+              <Text style={styles.warningText}>
+                Password must be at least 8 characters, including uppercase, lowercase, number, and special character (@$!%*?&).
+              </Text>
+            )}
           </View>
         </View>
         
-
         <View style={styles.buttonContainer}>
           <TouchableOpacity
             onPress={handleLogin}
@@ -236,12 +251,10 @@ const LoginScreen: FunctionComponent = () => {
             <Text style={styles.buttonOutlineText}>Register</Text>
           </TouchableOpacity>
         </View>
-        
       </KeyboardAvoidingView>
     </SafeAreaProvider>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -336,6 +349,12 @@ const styles = StyleSheet.create({
   roleText: {
     color: '#2c3e50',
     fontWeight: '600',
+  },
+  warningText: {
+    color: 'red',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 10,
   },
   // Adjust container to add spacing
 

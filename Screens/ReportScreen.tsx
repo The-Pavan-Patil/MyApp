@@ -1,6 +1,5 @@
-// Create a new file ReportScreen.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ShareOptions, Platform, ActivityIndicator } from 'react-native';
 import MQTT from 'sp-react-native-mqtt';
 import { useRoute } from '@react-navigation/native';
 import { RootStackParamList } from '../App';
@@ -8,6 +7,11 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { app, auth } from '../firebase';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import RNHTMLtoPDF from 'react-native-html-to-pdf';
+import RNFS from 'react-native-fs';
+import Share from 'react-native-share';
+import { file, options } from 'pdfkit';
+
 
 
 const MQTT_BROKER_URL = "wss://89db5cc86dc341a691af602183793358.s1.eu.hivemq.cloud:8883";
@@ -55,6 +59,7 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
     const [client, setClient] = useState<any>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [report, setReport] = useState<any>(null);
+    const [currentCollecting, setCurrentCollecting] = useState<string | null>(null);
     const [patientInfo, setPatientInfo] = useState({
         name: userData?.name,
         age: userData?.age,
@@ -123,6 +128,248 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
         return () => client?.disconnect();
     }, []);
 
+    const hexToRgb = (hex: string): [number, number, number] => {
+        const bigint = parseInt(hex.replace('#', ''), 16);
+        return [
+            ((bigint >> 16) & 255) / 255,
+            ((bigint >> 8) & 255) / 255,
+            (bigint & 255) / 255
+        ];
+    };
+
+    const getInstructions = (sensor: string) => {
+        switch (sensor) {
+            case 'ecg':
+                return 'Please remain still and avoid movement to ensure accurate ECG readings.';
+            case 'temp':
+                return 'Keep the temperature sensor in contact with your skin.';
+            case 'health':
+                return 'Keep the finger on the sensor for heart rate and SpO₂ measurement.';
+            case 'emg':
+                return 'Move the Muscle you want to measure and relax it between measurements.';
+            default:
+                return '';
+        }
+    };
+
+    const generatePDF = async () => {
+        if (!report) return;
+
+        try {
+            const html = `
+<html>
+  <head>
+    <style>
+      /* Professional Medical Report Styles */
+      @page { margin: 50px 40px; }
+      body { 
+        font-family: 'Arial', sans-serif;
+        line-height: 1.6;
+        color: #333;
+      }
+      .header {
+        border-bottom: 2px solid #3498db;
+        padding-bottom: 20px;
+        margin-bottom: 30px;
+      }
+      .clinic-info {
+        text-align: center;
+        margin-bottom: 25px;
+      }
+      .clinic-name {
+        font-size: 24px;
+        color: #2c3e50;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+      .patient-info {
+        margin-bottom: 30px;
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+      }
+      .section-title {
+        color: #3498db;
+        font-size: 18px;
+        font-weight: bold;
+        margin: 25px 0 15px;
+        border-bottom: 1px solid #ecf0f1;
+        padding-bottom: 8px;
+      }
+      .vital-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 15px 0;
+      }
+      .vital-table th {
+        background: #3498db;
+        color: white;
+        padding: 12px;
+        text-align: left;
+      }
+      .vital-table td {
+        padding: 12px;
+        border-bottom: 1px solid #ecf0f1;
+      }
+      .vital-table tr:nth-child(even) {
+        background-color: #f8f9fa;
+      }
+      .critical-value {
+        color: #e74c3c;
+        font-weight: bold;
+      }
+      .footer {
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 1px solid #ecf0f1;
+        font-size: 12px;
+        color: #95a5a6;
+      }
+      .signature-box {
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px dashed #ccc;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="clinic-info">
+        <div class="clinic-name">Vita-Link Diagnostics</div>
+      </div>
+      
+      <div class="patient-info">
+        <h3>Patient Information</h3>
+        <table>
+          <tr>
+            <td width="200"><strong>Name:</strong> ${userData?.name}</td>
+            <td><strong>Age:</strong> ${userData?.age}</td>
+          </tr>
+          <tr>
+            <td><strong>Report Date:</strong> ${report.timestamp}</td>
+            <td><strong>Report ID:</strong> CC-${Math.floor(100000 + Math.random() * 900000)}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Cardiac Analysis -->
+    <div class="section">
+      <div class="section-title">Cardiac Analysis</div>
+      <table class="vital-table">
+        <tr>
+          <th>Parameter</th>
+          <th>Value</th>
+          <th>Normal Range</th>
+        </tr>
+        <tr>
+          <td>Average ECG</td>
+          <td>${report.ecg.avg.toFixed(2)} mV</td>
+          <td>0.5-2.5 mV</td>
+        </tr>
+        <tr>
+          <td>Peak ECG</td>
+          <td>${report.ecg.max.toFixed(2)} mV</td>
+          <td>&lt; 3.0 mV</td>
+        </tr>
+        <tr>
+          <td>Minimum ECG</td>
+          <td>${report.ecg.min.toFixed(2)} mV</td>
+          <td>&gt; 0.1 mV</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Body Temperature -->
+    <div class="section">
+      <div class="section-title">Body Temperature Analysis</div>
+      <table class="vital-table">
+        <tr>
+          <th>Parameter</th>
+          <th>Value</th>
+          <th>Status</th>
+        </tr>
+        <tr>
+          <td>Temperature</td>
+          <td>${report.temperature.avg.toFixed(2)}°C</td>
+          <td>${report.temperature.avg >= 38 ? '<span class="critical-value">Fever</span>' : 'Normal'}</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Vital Signs -->
+    <div class="section">
+      <div class="section-title">Vital Signs</div>
+      <table class="vital-table">
+        <tr>
+          <th>Parameter</th>
+          <th>Value</th>
+          <th>Normal Range</th>
+        </tr>
+        <tr>
+          <td>Heart Rate</td>
+          <td>${report.heartRate.avg.toFixed(0)} BPM</td>
+          <td>60-100 BPM</td>
+        </tr>
+        <tr>
+          <td>SpO₂</td>
+          <td>${report.spO2.avg.toFixed(0)}%</td>
+          <td>95-100%</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Medical Assessment -->
+    <div class="section">
+      <div class="section-title">Vita-Link Assessment</div>
+      <div style="padding: 15px; background: #fff9eb; border-radius: 8px;">
+        <p>${report.assessment}</p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p>Generated by Vitalink Application</p>
+    </div>
+  </body>
+</html>
+`;
+            const pdfResult = await RNHTMLtoPDF.convert({
+                html,
+                fileName: 'health_report',
+                directory: 'Documents',
+            });
+
+
+            const pdfOptions = {
+                html,
+                fileName: 'health_report',
+                directory: 'Documents',
+            };
+
+            const baseOptions = {
+                subject: 'Health Report PDF',
+                dialogTitle: 'Save Health Report',
+            };
+
+            const iosOptions = {
+                ...baseOptions,
+                url: `file://${pdfResult.filePath}`,
+                saveToFiles: true,
+            };
+
+            const androidOptions = {
+                ...baseOptions,
+                urls: [`file://${pdfResult.filePath}`],
+            };
+
+
+            await Share.open(Platform.OS === 'ios' ? iosOptions : androidOptions);
+        } catch (error) {
+            Alert.alert('Error', 'Failed to generate PDF');
+        }
+    };
+
     const handleSignOut = async () => {
         try {
             if (client?.isConnected()) {
@@ -144,32 +391,43 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
         setIsGenerating(true);
         setReport(null);
 
-        // Clear previous data
-        ecgData.current = [];
-        tempData.current = [];
-        hrData.current = [];
-        spo2Data.current = [];
-        emgData.current = [];
+        try {
+            // ECG Collection
+            client.publish(COMMAND_TOPIC, "ecg", 0, false);
+            setCurrentCollecting('ecg');
+            await new Promise(resolve => setTimeout(resolve, 60000));
+            client.publish(COMMAND_TOPIC, "stop", 0, false);
+            setCurrentCollecting(null);
 
-        // Start ECG collection for 1 minute
-        client.publish(COMMAND_TOPIC, "ecg", 0, false);
-        await new Promise(resolve => setTimeout(resolve, 60000));
-        client.publish(COMMAND_TOPIC, "stop", 0, false);
+            // Temperature Collection
+            client.publish(COMMAND_TOPIC, "temp", 0, false);
+            setCurrentCollecting('temp');
+            await new Promise(resolve => setTimeout(resolve, 30000));
+            client.publish(COMMAND_TOPIC, "stop", 0, false);
+            setCurrentCollecting(null);
 
-        // Start Temp collection for 30 seconds
-        client.publish(COMMAND_TOPIC, "temp", 0, false);
-        await new Promise(resolve => setTimeout(resolve, 30000));
-        client.publish(COMMAND_TOPIC, "stop", 0, false);
+            // Health Data Collection
+            client.publish(COMMAND_TOPIC, "health", 0, false);
+            setCurrentCollecting('health');
+            await new Promise(resolve => setTimeout(resolve, 20000));
+            client.publish(COMMAND_TOPIC, "stop", 0, false);
+            setCurrentCollecting(null);
 
-        // Start Health collection (100 samples ~20 seconds at 5Hz)
-        client.publish(COMMAND_TOPIC, "health", 0, false);
-        await new Promise(resolve => setTimeout(resolve, 20000));
-        client.publish(COMMAND_TOPIC, "stop", 0, false);
+            // EMG Collection
+            client.publish(COMMAND_TOPIC, "emg", 0, false);
+            setCurrentCollecting('emg');
+            await new Promise(resolve => setTimeout(resolve, 60000));
+            client.publish(COMMAND_TOPIC, "stop", 0, false);
+            setCurrentCollecting(null);
 
-        // Start EMG collection for 1 minute
-        client.publish(COMMAND_TOPIC, "emg", 0, false);
-        await new Promise(resolve => setTimeout(resolve, 60000));
-        client.publish(COMMAND_TOPIC, "stop", 0, false);
+            // Process data and generate report...
+            // ... existing report generation code
+
+        } catch (error) {
+            Alert.alert('Error', 'Data collection failed');
+            setCurrentCollecting(null);
+            setIsGenerating(false);
+        }
 
         // Process collected data
         const timestamp = new Date().toLocaleString();
@@ -256,7 +514,18 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
                         {isGenerating ? "Collecting Data..." : "Generate Full Report"}
                     </Text>
                 </TouchableOpacity>
-                
+                {currentCollecting && (
+                    <View style={styles.collectingContainer}>
+                        <ActivityIndicator size="small" color="#3498db" />
+                        <Text style={styles.collectingText}>
+                            Collecting {currentCollecting.toUpperCase()} data...
+                        </Text>
+                        <Text style={styles.instructionText}>
+                            {getInstructions(currentCollecting)}
+                        </Text>
+                    </View>
+                )}
+
 
                 {report && (
                     <View style={styles.reportContainer}>
@@ -331,6 +600,18 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
                             <Text style={styles.assessmentText}>{report.assessment}</Text>
 
                         </View>
+                        <TouchableOpacity
+                            style={styles.downloadButton}
+                            onPress={generatePDF}
+                        >
+                            <Icon
+                                name="download"
+                                size={20}
+                                color="white"
+                                style={styles.buttonIcon}
+                            />
+                            <Text style={styles.buttonText}>Download PDF Report</Text>
+                        </TouchableOpacity>
 
                     </View>
 
@@ -538,6 +819,37 @@ const styles = StyleSheet.create({
         flexGrow: 1,
         padding: 1,
     },
+    downloadButton: {
+        backgroundColor: '#27ae60',
+        padding: 16,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 20,
+        shadowColor: '#27ae60',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 6,
+    },
+    collectingContainer: {
+        backgroundColor: '#e3f2fd',
+        borderRadius: 8,
+        padding: 16,
+        marginVertical: 10,
+        alignItems: 'center',
+    },
+    collectingText: {
+        color: '#1976d2',
+        fontWeight: '500',
+        marginTop: 8,
+        marginBottom: 4,
+    },
+    instructionText: {
+        color: '#424242',
+        fontSize: 14,
+        textAlign: 'center',
+    },
 });
 
-export default ReportScreen;
+export default ReportScreen; 

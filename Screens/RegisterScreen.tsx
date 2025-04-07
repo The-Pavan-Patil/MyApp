@@ -37,6 +37,23 @@ const LoginScreen: FunctionComponent = () => {
     const [isSigningUp, setIsSigningUp] = useState(false); // Add this state
     const [showPassword, setShowPassword] = useState(false);
     const navigation = useNavigation<LoginScreenNavigationProp>();
+    // Password validation states
+    const [hasMinLength, setHasMinLength] = useState(false);
+    const [hasUpperCase, setHasUpperCase] = useState(false);
+    const [hasLowerCase, setHasLowerCase] = useState(false);
+    const [hasNumber, setHasNumber] = useState(false);
+    const [hasSpecialChar, setHasSpecialChar] = useState(false);
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
+
+    useEffect(() => {
+        // Update password validations on password change
+        setHasMinLength(password.length >= 8);
+        setHasLowerCase(/[a-z]/.test(password));
+        setHasUpperCase(/[A-Z]/.test(password));
+        setHasNumber(/\d/.test(password));
+        setHasSpecialChar(/[@$!%*?&]/.test(password));
+    }, [password]);
 
     useEffect(() => {
 
@@ -69,6 +86,13 @@ const LoginScreen: FunctionComponent = () => {
         }
         if (!userType) {
             Alert.alert("Error", "Please select your role first");
+            return;
+        }
+        if (!passwordRegex.test(password)) {
+            Alert.alert(
+                "Password Requirements",
+                "Password must contain:\n- Minimum 8 characters\n- At least one uppercase letter\n- At least one lowercase letter\n- At least one number\n- At least one special character (@$!%*?&)"
+            );
             return;
         }
         setIsSigningUp(true);
@@ -181,7 +205,26 @@ const LoginScreen: FunctionComponent = () => {
                                 color="#666"
                             />
                         </TouchableOpacity>
+
                     </View>
+                    {/* Password validation messages */}
+                <View style={styles.validationContainer}>
+                    <Text style={hasMinLength ? styles.valid : styles.invalid}>
+                        • At least 8 characters
+                    </Text>
+                    <Text style={hasUpperCase ? styles.valid : styles.invalid}>
+                        • Contains uppercase letter
+                    </Text>
+                    <Text style={hasLowerCase ? styles.valid : styles.invalid}>
+                        • Contains lowercase letter
+                    </Text>
+                    <Text style={hasNumber ? styles.valid : styles.invalid}>
+                        • Contains number
+                    </Text>
+                    <Text style={hasSpecialChar ? styles.valid : styles.invalid}>
+                        • Contains special character (@$!%*?&)
+                    </Text>
+                </View>
                 </View>
 
 
@@ -297,6 +340,18 @@ const styles = StyleSheet.create({
     roleText: {
         color: '#2c3e50',
         fontWeight: '600',
+    },
+    validationContainer: {
+        width: '80%',
+        marginVertical: 10,
+    },
+    valid: {
+        color: 'green',
+        fontSize: 12,
+    },
+    invalid: {
+        color: 'red',
+        fontSize: 12,
     },
     // Adjust container to add spacing
 
