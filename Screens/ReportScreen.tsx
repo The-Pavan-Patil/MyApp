@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ShareOptions, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ShareOptions, Platform, ActivityIndicator, TextInput } from 'react-native';
 import MQTT from 'sp-react-native-mqtt';
 import { useRoute } from '@react-navigation/native';
 import { RootStackParamList } from '../App';
@@ -11,7 +11,8 @@ import RNHTMLtoPDF from 'react-native-html-to-pdf';
 import RNFS from 'react-native-fs';
 import Share from 'react-native-share';
 import { file, options } from 'pdfkit';
-
+import Config from 'react-native-config';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 
 const MQTT_BROKER_URL = "wss://89db5cc86dc341a691af602183793358.s1.eu.hivemq.cloud:8883";
@@ -51,7 +52,10 @@ type ReportScreenProps = {
     navigation: StackNavigationProp<RootStackParamList, 'ReportScreen'>;
 };
 
+//
+
 const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
+    const genAI = new GoogleGenerativeAI("AIzaSyCyb8Qu9zh4wPbb7crKBTwqq4UE9etUoyQ");
     const route = useRoute();
     const [userData, setUserData] = useState<UserData | null>(null);
     const db = getFirestore(app);
@@ -65,6 +69,8 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
         age: userData?.age,
         email: auth.currentUser?.email || "user@example.com"
     });
+    const [symptomDescription, setSymptomDescription] = useState('');
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
     // Data collection refs
     const ecgData = useRef<number[]>([]);
@@ -252,6 +258,12 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
         </table>
       </div>
     </div>
+    <div class="section">
+  <div class="section-title">Reported Symptoms</div>
+  <div style="padding: 15px; background: #fff9eb; border-radius: 8px;">
+    <p>${report.symptoms || 'No symptoms reported'}</p>
+  </div>
+</div>
 
     <!-- Cardiac Analysis -->
     <div class="section">
@@ -326,6 +338,7 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
         <p>${report.assessment}</p>
       </div>
     </div>
+    
 
     <!-- Footer -->
     <div class="footer">
@@ -370,6 +383,46 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
         }
     };
 
+    const getGeminiAssessment = async (sensorData: any, symptoms: string) => {
+        setIsGeneratingAI(true);
+        try {
+          if (!sensorData || !sensorData.ecg || !sensorData.temp) {
+            throw new Error('Incomplete sensor data');
+          }
+      
+          const model = genAI.getGenerativeModel({ model:  "gemini-2.5-pro-exp-03-25" });
+          
+          const prompt = `As a medical professional, analyze this patient data:
+            
+      Patient Symptoms: ${symptoms || 'None reported'}
+      
+      Sensor Data:
+      - ECG: Avg ${sensorData.ecg.avg.toFixed(2)} mV
+      - Temperature: ${sensorData.temp.avg.toFixed(2)}°C
+      - Heart Rate: ${sensorData.hr.avg.toFixed(0)} BPM
+      - SpO2: ${sensorData.spo2.avg.toFixed(0)}%
+      - EMG: ${sensorData.emg.avg.toFixed(2)} mV
+      
+      Provide a Ai Analysis with:
+      1. Diagnosis based on symptoms (give warning if the sensor data is not correct)
+      2. Recommended actions
+      3. No bold text
+      3. Plain text only 
+      Use clear, non-technical language.`;
+      
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          return response.text();
+        } catch (error) {
+          console.error('Gemini Error:', error);
+          return `AI Analysis unavailable: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        } finally {
+          setIsGeneratingAI(false);
+        }
+      };
+
+
+
     const handleSignOut = async () => {
         try {
             if (client?.isConnected()) {
@@ -391,32 +444,34 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
         setIsGenerating(true);
         setReport(null);
 
+
+
         try {
             // ECG Collection
             client.publish(COMMAND_TOPIC, "ecg", 0, false);
             setCurrentCollecting('ecg');
-            await new Promise(resolve => setTimeout(resolve, 60000));
+            await new Promise(resolve => setTimeout(resolve, 15000));
             client.publish(COMMAND_TOPIC, "stop", 0, false);
             setCurrentCollecting(null);
 
             // Temperature Collection
             client.publish(COMMAND_TOPIC, "temp", 0, false);
             setCurrentCollecting('temp');
-            await new Promise(resolve => setTimeout(resolve, 30000));
+            await new Promise(resolve => setTimeout(resolve, 15000));
             client.publish(COMMAND_TOPIC, "stop", 0, false);
             setCurrentCollecting(null);
 
             // Health Data Collection
             client.publish(COMMAND_TOPIC, "health", 0, false);
             setCurrentCollecting('health');
-            await new Promise(resolve => setTimeout(resolve, 20000));
+            await new Promise(resolve => setTimeout(resolve, 15000));
             client.publish(COMMAND_TOPIC, "stop", 0, false);
             setCurrentCollecting(null);
 
             // EMG Collection
             client.publish(COMMAND_TOPIC, "emg", 0, false);
             setCurrentCollecting('emg');
-            await new Promise(resolve => setTimeout(resolve, 60000));
+            await new Promise(resolve => setTimeout(resolve, 15000));
             client.publish(COMMAND_TOPIC, "stop", 0, false);
             setCurrentCollecting(null);
 
@@ -445,34 +500,37 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
         const spo2Stats = calculateStats(spo2Data.current);
         const emgStats = calculateStats(emgData.current);
 
+
         // Generate health assessment
-        const getAssessment = () => {
-            let issues = [];
-
-            if (tempStats.avg >= 38) issues.push("Fever detected due to high temperature");
-            if (tempStats.avg < 35) issues.push("Hypothermia detected due to low temperature");
-            if (hrStats.avg < 60) issues.push("Bradycardia (low heart rate)");
-            if (hrStats.avg > 100) issues.push("Tachycardia (high heart rate)");
-            if (spo2Stats.avg < 95) issues.push("Low oxygen saturation");
-
-            return issues.length > 0
-                ? issues.join(", ")
-                : "All parameters within normal range";
+        try {
+            const aiAssessment = await getGeminiAssessment({
+              ecg: ecgStats,
+              temp: tempStats,
+              hr: hrStats,
+              spo2: spo2Stats,
+              emg: emgStats
+            }, symptomDescription);
+        
+            console.log('AI Assessment:', aiAssessment); // Add this line
+        
+            setReport({
+              timestamp,
+              patientInfo,
+              ecg: ecgStats,
+              temperature: tempStats,
+              heartRate: hrStats,
+              spO2: spo2Stats,
+              emg: emgStats,
+              assessment: aiAssessment, 
+              symptoms: symptomDescription
+            });
+          } catch (error) {
+            console.error('Report Generation Error:', error);
+            Alert.alert('Error', 'Failed to generate report');
+          }
+          
+          setIsGenerating(false);
         };
-
-        setReport({
-            timestamp,
-            patientInfo,
-            ecg: ecgStats,
-            temperature: tempStats,
-            heartRate: hrStats,
-            spO2: spo2Stats,
-            emg: emgStats,
-            assessment: getAssessment()
-        });
-
-        setIsGenerating(false);
-    };
 
     return (
         <View style={styles.container}>
@@ -495,6 +553,21 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
                         </View>
                     </View>
 
+                </View>
+            )}
+            <TextInput
+                style={styles.symptomInput}
+                placeholder="Describe any symptoms or health concerns..."
+                placeholderTextColor="#95a5a6"
+                multiline
+                numberOfLines={3}
+                value={symptomDescription}
+                onChangeText={setSymptomDescription}
+            />
+            {isGeneratingAI && (
+                <View style={styles.aiLoading}>
+                    <ActivityIndicator size="small" color="#3498db" />
+                    <Text style={styles.aiLoadingText}>Generating AI Analysis...</Text>
                 </View>
             )}
 
@@ -849,6 +922,34 @@ const styles = StyleSheet.create({
         color: '#424242',
         fontSize: 14,
         textAlign: 'center',
+    },
+    symptomInput: {
+        backgroundColor: 'white',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 20,
+        minHeight: 100,
+        textAlignVertical: 'top',
+        fontSize: 14,
+        color: '#2c3e50',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        elevation: 2,
+    },
+    aiLoading: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 10,
+        backgroundColor: '#e3f2fd',
+        borderRadius: 8,
+        marginBottom: 10,
+    },
+    aiLoadingText: {
+        color: '#1976d2',
+        marginLeft: 10,
+        fontSize: 14,
     },
 });
 
