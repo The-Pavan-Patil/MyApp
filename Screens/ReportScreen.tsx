@@ -390,7 +390,7 @@ const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
             throw new Error('Incomplete sensor data');
           }
       
-          const model = genAI.getGenerativeModel({ model:  "gemini-2.5-pro-exp-03-25" });
+          const model = genAI.getGenerativeModel({ model:  "gemini-1.5-flash" });
           
           const prompt = `As a medical professional, analyze this patient data:
             

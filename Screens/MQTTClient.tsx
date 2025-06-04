@@ -7,7 +7,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../App';
 
 import { useRoute } from '@react-navigation/native';
-import { Client } from "mqtt";
+//import { Client } from "mqtt";
 
 type MQTTClientProps = {
   navigation: StackNavigationProp<RootStackParamList, 'MQTTClient'>;
